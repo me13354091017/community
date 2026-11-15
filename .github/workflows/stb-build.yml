@@ -78,7 +78,7 @@ jobs:
           exit $LASTEXITCODE
 
       - name: Package
-        shell: pwwsh
+        shell: pwsh
         run: |
           $dirs = @(
             "Ink Canvas/bin/Release/x64/net10.0-windows10.0.19041.0",
