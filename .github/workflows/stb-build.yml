@@ -1,0 +1,90 @@
+name: STB Desktop Build
+
+# School Tools Board（STB）桌面版构建：
+# 以 ICC-CE 源码为基础，构建前用脚本打品牌补丁（改程序名 / 窗口标题 / 图标），
+# 不改动任何源码文件，所以永远不跟上游冲突。
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ net10 ]
+    paths:
+      - '.github/workflows/stb-build.yml'
+      - 'stb/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stb-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Show SDK
+        run: dotnet --list-sdks
+
+      - name: Restore
+        run: dotnet restore "Ink Canvas/InkCanvasForClass.csproj"
+
+      - name: Apply STB brand patch
+        shell: pwsh
+        run: |
+          $csproj = "Ink Canvas/InkCanvasForClass.csproj"
+          $s = Get-Content $csproj -Raw
+          $s = $s -replace '<AssemblyName>InkCanvasForClass</AssemblyName>', '<AssemblyName>SchoolToolsBoard</AssemblyName>'
+          Set-Content -LiteralPath $csproj -Value $s -NoNewline -Encoding utf8
+
+          $xaml = "Ink Canvas/MainWindow.xaml"
+          $x = Get-Content $xaml -Raw
+          $x = $x -replace 'Title="InkCanvasforClass"', 'Title="School Tools Board · 课堂白板"'
+          Set-Content -LiteralPath $xaml -Value $x -NoNewline -Encoding utf8
+
+          Write-Host '应用补丁后的关键行：'
+          Select-String -Path $csproj -Pattern 'AssemblyName' | ForEach-Object { $_.Line.Trim() }
+          Select-String -Path $xaml -Pattern 'Title=' | Select-Object -First 1 | ForEach-Object { $_.Line.Trim() }
+
+      - name: Generate STB app icon
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          choco install imagemagick -y --no-progress | Out-Null
+          magick -background none "stb/icon.svg" -define icon:auto-resize=256,128,64,48,32,16 "Ink Canvas/Resources/icc.ico"
+          if (Test-Path "Ink Canvas/Resources/icc.ico") { Write-Host 'icon ok' } else { Write-Host 'icon missing' }
+
+      - name: Build (Release x64)
+        run: msbuild "Ink Canvas/InkCanvasForClass.csproj" /p:Configuration=Release /p:Platform=x64 /m /p:RunAnalyzers=false /verbosity:minimal
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $dirs = @(
+            "Ink Canvas/bin/Release/x64/net10.0-windows10.0.19041.0",
+            "Ink Canvas/bin/Release/x64/net6.0-windows10.0.19041.0",
+            "Ink Canvas/bin/Release/AnyCPU/net10.0-windows10.0.19041.0"
+          )
+          $out = $dirs | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $out) { throw '找不到构建输出目录' }
+          Write-Host "output = $out"
+          Get-ChildItem $out -Filter *.exe | Select-Object Name, Length
+          Compress-Archive -Path "$out/*" -DestinationPath "SchoolToolsBoard-STB-win-x64.zip" -Force
+          Get-Item "SchoolToolsBoard-STB-win-x64.zip" | Select-Object Name, Length
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SchoolToolsBoard-STB-win-x64
+          path: SchoolToolsBoard-STB-win-x64.zip
+          if-no-files-found: error
