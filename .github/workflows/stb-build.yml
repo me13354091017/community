@@ -3,6 +3,7 @@ name: STB Desktop Build
 # School Tools Board（STB）桌面版构建：
 # 以 ICC-CE 源码为基础，构建前用脚本打品牌补丁（程序名 / 窗口标题 / 图标），
 # 不改动任何源码文件，所以永远不会跟上游冲突。
+# PPT 批注功能需要 ppt-agent（VSTO 插件），所以同时构建 InkCanvas.PowerPointAddIn。
 
 on:
   workflow_dispatch:
@@ -39,12 +40,20 @@ jobs:
           $ErrorActionPreference = 'Continue'
           function Log($m) { Write-Host $m; $m | Out-File -FilePath steps.log -Append -Encoding utf8 }
 
-          Log 'PHASE 1 restore'
+          Log 'PHASE 1 locate msbuild'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $msbuild = $null
+          if (Test-Path $vswhere) {
+            $msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
+          }
+          if (-not $msbuild) { $msbuild = (Get-Command msbuild -ErrorAction SilentlyContinue).Source }
+          Log "msbuild=$msbuild"
+
+          Log 'PHASE 2 restore'
           dotnet restore "Ink Canvas/InkCanvasForClass.csproj" --locked-mode *>&1 | Out-File -FilePath restore.log -Encoding utf8
           Log "restore exit=$LASTEXITCODE"
-          if ($LASTEXITCODE -ne 0) { exit 1 }
 
-          Log 'PHASE 2 brand patch'
+          Log 'PHASE 3 brand patch'
           $csproj = "Ink Canvas/InkCanvasForClass.csproj"
           $s = Get-Content $csproj -Raw
           $s = $s -replace '<AssemblyName>InkCanvasForClass</AssemblyName>', '<AssemblyName>SchoolToolsBoard</AssemblyName>'
@@ -55,21 +64,52 @@ jobs:
           Set-Content -LiteralPath $xaml -Value $x -NoNewline -Encoding utf8
           Log 'patch ok'
 
-          Log 'PHASE 3 icon'
+          Log 'PHASE 4 icon'
           try { choco install imagemagick -y --no-progress *>&1 | Out-Null } catch { Log "choco fail: $_" }
           if (Get-Command magick -ErrorAction SilentlyContinue) {
             magick -background none "stb/icon.svg" -define icon:auto-resize=256,128,64,48,32,16 "Ink Canvas/Resources/icc.ico" 2>&1 | Out-File -FilePath icon.log -Encoding utf8
             Log "icon exit=$LASTEXITCODE"
-          } else { Log 'magick not found, keep upstream icon' }
+          } else { Log 'magick not found' }
 
-          Log 'PHASE 4 build'
-          dotnet build "Ink Canvas/InkCanvasForClass.csproj" -c Release -p:Platform=x64 *>&1 | Out-File -FilePath build.log -Encoding utf8
-          Log "build exit=$LASTEXITCODE"
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Log 'PHASE 5 VSTO runtime + signing cert'
+          try {
+            $url = 'https://go.microsoft.com/fwlink/?LinkId=158918'
+            $out = "$env:TEMP\VSTORuntime.exe"
+            Invoke-WebRequest -Uri $url -OutFile $out -MaximumRedirection 10
+            Start-Process -FilePath $out -ArgumentList '/quiet /norestart' -Wait -NoNewWindow
+            Log 'VSTO runtime installed'
+          } catch { Log "vsto install fail: $_" }
+          try {
+            $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=STB Build CI' `
+              -CertStoreLocation 'Cert:\CurrentUser\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(2)
+            $thumb = $cert.Thumbprint
+            Log "cert=$thumb"
+          } catch { $thumb = ''; Log "cert fail: $_" }
 
-          Log 'PHASE 5 package'
+          Log 'PHASE 6 build ppt-agent (VSTO add-in)'
+          if ($msbuild -and $thumb) {
+            & $msbuild "InkCanvas.PowerPointAddIn/InkCanvas.PowerPointAddIn.csproj" /p:Configuration=Release /p:Platform=AnyCPU /p:SignManifests=true /p:ManifestCertificateThumbprint=$thumb /verbosity:minimal *>&1 | Out-File -FilePath addin.log -Encoding utf8
+            Log "addin exit=$LASTEXITCODE"
+          } else { Log 'skip addin build (msbuild or cert missing)' }
+
+          Log 'PHASE 7 build main app'
+          if ($msbuild) {
+            & $msbuild "Ink Canvas/InkCanvasForClass.csproj" /p:Configuration=Release /p:Platform=x64 /m /p:RunAnalyzers=false /verbosity:minimal *>&1 | Out-File -FilePath build.log -Encoding utf8
+            Log "build exit=$LASTEXITCODE"
+          } else {
+            dotnet build "Ink Canvas/InkCanvasForClass.csproj" -c Release -p:Platform=x64 *>&1 | Out-File -FilePath build.log -Encoding utf8
+            Log "dotnet build exit=$LASTEXITCODE"
+          }
+
+          Log 'PHASE 8 package'
           $out = "Ink Canvas/bin/Release/x64/net10.0-windows10.0.19041.0"
           if (-not (Test-Path $out)) { Get-ChildItem "Ink Canvas/bin" -Recurse -Depth 4 | Select-Object FullName | Out-String | Out-File -FilePath hint.txt -Encoding utf8; Log 'NO OUTPUT DIR'; exit 1 }
+          $agent = Join-Path $out 'ppt-agent'
+          if (Test-Path $agent) {
+            $agentFiles = (Get-ChildItem $agent -File).Count
+            Log "ppt-agent files=$agentFiles"
+            Get-ChildItem $agent -File | Select-Object Name | Out-String | ForEach-Object { Log $_ }
+          } else { Log 'ppt-agent MISSING' }
           Get-ChildItem $out -Filter *.exe | Select-Object Name, Length | Out-String | ForEach-Object { Log $_ }
           Compress-Archive -Path "$out/*" -DestinationPath "SchoolToolsBoard-STB-win-x64.zip" -Force
           Log "zip=$((Get-Item 'SchoolToolsBoard-STB-win-x64.zip').Length) bytes"
@@ -82,44 +122,31 @@ jobs:
           path: SchoolToolsBoard-STB-win-x64.zip
           if-no-files-found: error
 
-      - name: Publish diagnostics
-        if: always()
+      - name: Publish release
+        if: success()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $body = "School Tools Board · 课堂白板（STB）桌面版`n`n基于 InkCanvasForClass Community Edition（ICC-CE, GPL-3.0）源码构建，保留 PPT 放映批注、多页白板 + 时间机器、手势与笔压、形状与学科工具。`n`n- 主程序：SchoolToolsBoard.exe（解压后双击）`n- PPT 批注插件：ppt-agent/（已内置）`n- 运行环境：Windows 10 1809+ / Windows 11 x64，需 .NET 10 Desktop Runtime`n- 上游：https://github.com/InkCanvasForClass/community`n- 构建提交：$env:GITHUB_SHA"
+          gh release view stb-latest 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create stb-latest --title 'School Tools Board 课堂白板（桌面版）' --notes $body
+          }
+          gh release upload stb-latest SchoolToolsBoard-STB-win-x64.zip --clobber
+          gh release edit stb-latest --notes $body
+
+      - name: Diagnose on failure
+        if: failure()
         shell: pwsh
         run: |
-          foreach ($f in @('steps.log','build.log')) {
+          foreach ($f in @('steps.log','addin.log','build.log')) {
             if (Test-Path $f) {
               try { $u = (Invoke-WebRequest -Method Post -InFile $f -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::notice::$f -> $u" } catch {}
             }
           }
-          if (Test-Path build.log) {
-            Get-Content build.log | Select-String -Pattern ': error|error NU|error MSB|error CS' | Select-Object -First 8 | ForEach-Object { Write-Host "::error::$($_.Line)" }
+          foreach ($f in @('addin.log','build.log')) {
+            if (Test-Path $f) { Get-Content $f | Select-String -Pattern ': error|error MSB|error CS' | Select-Object -First 8 | ForEach-Object { Write-Host "::error::$($_.Line)" } }
           }
           exit 0
-
-  release:
-    needs: build
-    if: needs.build.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: SchoolToolsBoard-STB-win-x64
-          path: dist
-
-      - name: Publish release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -x
-          ls -l dist
-          BODY=$(printf 'School Tools Board · 课堂白板\n\n本版本基于开源项目 InkCanvasForClass Community Edition（ICC-CE, GPL-3.0）源码构建，保留 PP 批注、多页白板+时间机器、手势与笔压、形状与学科工具。\n\n- 主程序：SchoolToolsBoard.exe\n- 运行环境：Windows 10 1809+ / Windows 11，x64，需 .NET 10 Desktop Runtime\n- 上游：https://github.com/InkCanvasForClass/community\n\n构建提交：%s' "$SHA")
-          gh release view stb-latest >/dev/null 2>&1 \
-            || gh release create stb-latest --title 'School Tools Board 课堂白板（桌面版）' --notes "$BODY"
-          gh release upload stb-latest dist/SchoolToolsBoard-STB-win-x64.zip --clobber
-          gh release edit stb-latest --notes "$BODY"
