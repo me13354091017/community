@@ -34,16 +34,15 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Build STB package
-        continue-on-error: true
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
           function Log($m) { Write-Host $m; $m | Out-File -FilePath steps.log -Append -Encoding utf8 }
-          Log "PHASE 0 dotnet=$(dotnet --version)"
 
           Log 'PHASE 1 restore'
           dotnet restore "Ink Canvas/InkCanvasForClass.csproj" --locked-mode *>&1 | Out-File -FilePath restore.log -Encoding utf8
           Log "restore exit=$LASTEXITCODE"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
           Log 'PHASE 2 brand patch'
           $csproj = "Ink Canvas/InkCanvasForClass.csproj"
@@ -54,7 +53,7 @@ jobs:
           $x = Get-Content $xaml -Raw
           $x = $x -replace 'Title="InkCanvasforClass"', 'Title="School Tools Board · 课堂白板"'
           Set-Content -LiteralPath $xaml -Value $x -NoNewline -Encoding utf8
-          Log "patch ok; $(Select-String -Path $csproj -Pattern 'AssemblyName').Line.Trim()"
+          Log 'patch ok'
 
           Log 'PHASE 3 icon'
           try { choco install imagemagick -y --no-progress *>&1 | Out-Null } catch { Log "choco fail: $_" }
@@ -64,35 +63,19 @@ jobs:
           } else { Log 'magick not found, keep upstream icon' }
 
           Log 'PHASE 4 build'
-          $mb = Get-Command msbuild -ErrorAction SilentlyContinue
-          Log "msbuild=$($mb.Source)"
-          if ($mb) {
-            & $mb.Source "Ink Canvas/InkCanvasForClass.csproj" /p:Configuration=Release /p:Platform=x64 /m /p:RunAnalyzers=false /verbosity:minimal *>&1 | Out-File -FilePath build.log -Encoding utf8
-            Log "build exit=$LASTEXITCODE"
-          } else {
-            Log 'msbuild missing, fallback to dotnet build'
-            dotnet build "Ink Canvas/InkCanvasForClass.csproj" -c Release -p:Platform=x64 *>&1 | Out-File -FilePath build.log -Encoding utf8
-            Log "dotnet build exit=$LASTEXITCODE"
-          }
+          dotnet build "Ink Canvas/InkCanvasForClass.csproj" -c Release -p:Platform=x64 *>&1 | Out-File -FilePath build.log -Encoding utf8
+          Log "build exit=$LASTEXITCODE"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
-          Log 'PHASE 5 collect output'
-          Get-ChildItem "Ink Canvas/bin" -Recurse -Depth 4 -ErrorAction SilentlyContinue | Select-Object FullName | Out-String | Out-File -FilePath hint.txt -Encoding utf8
-          $dirs = @(
-            "Ink Canvas/bin/Release/x64/net10.0-windows10.0.19041.0",
-            "Ink Canvas/bin/Release/AnyCPU/net10.0-windows10.0.19041.0",
-            "Ink Canvas/bin/Release/x64/net6.0-windows10.0.19041.0"
-          )
-          $out = $dirs | Where-Object { Test-Path $_ } | Select-Object -First 1
-          Log "output dir=$out"
-          if ($out) {
-            Get-ChildItem $out -Filter *.exe | Select-Object Name, Length | Out-String | ForEach-Object { Log $_ }
-            Compress-Archive -Path "$out/*" -DestinationPath "SchoolToolsBoard-STB-win-x64.zip" -Force
-            Log "zip=$((Get-Item 'SchoolToolsBoard-STB-win-x64.zip').Length) bytes"
-          } else { Log 'NO OUTPUT DIR'; exit 1 }
+          Log 'PHASE 5 package'
+          $out = "Ink Canvas/bin/Release/x64/net10.0-windows10.0.19041.0"
+          if (-not (Test-Path $out)) { Get-ChildItem "Ink Canvas/bin" -Recurse -Depth 4 | Select-Object FullName | Out-String | Out-File -FilePath hint.txt -Encoding utf8; Log 'NO OUTPUT DIR'; exit 1 }
+          Get-ChildItem $out -Filter *.exe | Select-Object Name, Length | Out-String | ForEach-Object { Log $_ }
+          Compress-Archive -Path "$out/*" -DestinationPath "SchoolToolsBoard-STB-win-x64.zip" -Force
+          Log "zip=$((Get-Item 'SchoolToolsBoard-STB-win-x64.zip').Length) bytes"
           exit 0
 
       - name: Upload artifact
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: SchoolToolsBoard-STB-win-x64
@@ -103,12 +86,40 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          foreach ($f in @('steps.log','restore.log','build.log','icon.log','hint.txt')) {
+          foreach ($f in @('steps.log','build.log')) {
             if (Test-Path $f) {
-              try { $u = (Invoke-WebRequest -Method Post -InFile $f -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::notice::$f -> $u" } catch { Write-Host "::warning::$f upload failed" }
-            } else { Write-Host "::warning::missing $f" }
+              try { $u = (Invoke-WebRequest -Method Post -InFile $f -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::notice::$f -> $u" } catch {}
+            }
           }
           if (Test-Path build.log) {
-            Get-Content build.log | Select-String -Pattern ': error|error NU|error MSB|error CS' | Select-Object -First 10 | ForEach-Object { Write-Host "::error::$($_.Line)" }
+            Get-Content build.log | Select-String -Pattern ': error|error NU|error MSB|error CS' | Select-Object -First 8 | ForEach-Object { Write-Host "::error::$($_.Line)" }
           }
           exit 0
+
+  release:
+    needs: build
+    if: needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SchoolToolsBoard-STB-win-x64
+          path: dist
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -x
+          ls -l dist
+          BODY=$(printf 'School Tools Board · 课堂白板\n\n本版本基于开源项目 InkCanvasForClass Community Edition（ICC-CE, GPL-3.0）源码构建，保留 PP 批注、多页白板+时间机器、手势与笔压、形状与学科工具。\n\n- 主程序：SchoolToolsBoard.exe\n- 运行环境：Windows 10 1809+ / Windows 11，x64，需 .NET 10 Desktop Runtime\n- 上游：https://github.com/InkCanvasForClass/community\n\n构建提交：%s' "$SHA")
+          gh release view stb-latest >/dev/null 2>&1 \
+            || gh release create stb-latest --title 'School Tools Board 课堂白板（桌面版）' --notes "$BODY"
+          gh release upload stb-latest dist/SchoolToolsBoard-STB-win-x64.zip --clobber
+          gh release edit stb-latest --notes "$BODY"
