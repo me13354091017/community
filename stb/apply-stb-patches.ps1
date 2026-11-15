@@ -123,18 +123,18 @@ Patch-File 'Ink Canvas/MainWindow_cs/MW_MiniWhiteboard.cs' `
                     var clone = stroke.Clone();
                     var matrix = new System.Windows.Media.Matrix();
                     matrix.Translate(dx, dy);
-                    clone.Transform(matrix);
+                    clone.Transform(matrix, true);
                     merged.Add(clone);
                 }
 
                 inkCanvas.Select(new System.Windows.Ink.StrokeCollection());
                 inkCanvas.Strokes.Add(merged);
                 try { timeMachine.CommitStrokeUserInputHistory(merged); } catch { }
-                LogHelper.WriteLogToFile("板中板贴回主白板: " + merged.Count + " 条笔迹");
+                Ink_Canvas.Helpers.LogHelper.WriteLogToFile("板中板贴回主白板: " + merged.Count + " 条笔迹");
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
-                LogHelper.WriteLogToFile("板中板贴回主白板失败: " + ex.Message, LogHelper.LogType.Error);
+                Ink_Canvas.Helpers.LogHelper.WriteLogToFile("板中板贴回主白板失败: " + ex.Message, Ink_Canvas.Helpers.LogHelper.LogType.Error);
             }
         }' `
     'mini merge-to-main method'
