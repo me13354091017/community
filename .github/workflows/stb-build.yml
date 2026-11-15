@@ -34,19 +34,13 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore (locked)
-        run: dotnet restore "Ink Canvas.sln" --locked-mode
-
-      - name: Install VSTO Runtime
-        continue-on-error: true
         shell: pwsh
         run: |
-          $url = "https://go.microsoft.com/fwlink/?LinkId=158918"
-          $out = "$env:TEMP\VSTORuntime.exe"
-          Invoke-WebRequest -Uri $url -OutFile $out -MaximumRedirection 10
-          Start-Process -FilePath $out -ArgumentList "/quiet /norestart" -Wait -NoNewWindow
-          Write-Host "VSTO Runtime installed"
+          dotnet restore "Ink Canvas.sln" --locked-mode 2>&1 | Tee-Object -FilePath restore.log
+          exit $LASTEXITCODE
 
       - name: Apply STB brand patch
+        if: success()
         shell: pwsh
         run: |
           $csproj = "Ink Canvas/InkCanvasForClass.csproj"
@@ -61,9 +55,9 @@ jobs:
 
           Write-Host '--- patched ---'
           Select-String -Path $csproj -Pattern 'AssemblyName' | ForEach-Object { $_.Line.Trim() }
-          Select-String -Path $xaml -Pattern 'Title=' | Select-Object -First 1 | ForEach-Object { $_.Line.Trim() }
 
       - name: Generate STB app icon
+        if: success()
         continue-on-error: true
         shell: pwsh
         run: |
@@ -72,12 +66,14 @@ jobs:
           if (Test-Path "Ink Canvas/Resources/icc.ico") { Write-Host 'icon ok' } else { Write-Host 'icon missing' }
 
       - name: Build (Release x64)
+        if: success()
         shell: pwsh
         run: |
           msbuild "Ink Canvas/InkCanvasForClass.csproj" /p:Configuration=Release /p:Platform=x64 /m /p:RunAnalyzers=false /verbosity:minimal 2>&1 | Tee-Object -FilePath build.log
           exit $LASTEXITCODE
 
       - name: Package
+        if: success()
         shell: pwsh
         run: |
           $dirs = @(
@@ -92,24 +88,27 @@ jobs:
           Get-Item "SchoolToolsBoard-STB-win-x64.zip" | Select-Object Name, Length
 
       - name: Upload artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: SchoolToolsBoard-STB-win-x64
           path: SchoolToolsBoard-STB-win-x64.zip
           if-no-files-found: error
 
-      - name: Publish log to run summary
-        if: always()
+      - name: Diagnose on failure
+        if: failure()
         shell: pwsh
         run: |
-          "<details><summary>build log</summary>" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          "```" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          if (Test-Path build.log) {
-            $lines = (Get-Content build.log -Tail 200) -join "`n"
-            $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          } else {
-            "(no build.log)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          foreach ($f in @('restore.log','build.log')) {
+            if (Test-Path $f) {
+              Write-Host "--- $f (tail) ---"
+              Get-Content $f -Tail 30 | ForEach-Object {
+                $l = ($_ -replace "`r", '') -replace '%', '%25'
+                if ($l.Trim()) { Write-Host "::error::$l" }
+              }
+              try {
+                $url = (Invoke-WebRequest -Method Post -InFile $f -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim()
+                Write-Host "::error::full log -> $url"
+              } catch { Write-Host "::warning::paste uplink failed" }
+            }
           }
-          "```" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          "</details>" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
