@@ -1,8 +1,8 @@
 name: STB Desktop Build
 
 # School Tools Board（STB）桌面版构建：
-# 以 ICC-CE 源码为基础，构建前用脚本打品牌补丁（改程序名 / 窗口标题 / 图标），
-# 不改动任何源码文件，所以永远不跟上游冲突。
+# 以 ICC-CE 源码为基础，构建前用脚本打品牌补丁（程序名 / 窗口标题 / 图标），
+# 不改动任何源码文件，所以永远不会跟上游冲突。
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ on:
       - 'stb/**'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: stb-build
@@ -33,11 +33,18 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Show SDK
-        run: dotnet --list-sdks
+      - name: Restore (locked)
+        run: dotnet restore "Ink Canvas.sln" --locked-mode
 
-      - name: Restore
-        run: dotnet restore "Ink Canvas/InkCanvasForClass.csproj"
+      - name: Install VSTO Runtime
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $url = "https://go.microsoft.com/fwlink/?LinkId=158918"
+          $out = "$env:TEMP\VSTORuntime.exe"
+          Invoke-WebRequest -Uri $url -OutFile $out -MaximumRedirection 10
+          Start-Process -FilePath $out -ArgumentList "/quiet /norestart" -Wait -NoNewWindow
+          Write-Host "VSTO Runtime installed"
 
       - name: Apply STB brand patch
         shell: pwsh
@@ -52,7 +59,7 @@ jobs:
           $x = $x -replace 'Title="InkCanvasforClass"', 'Title="School Tools Board · 课堂白板"'
           Set-Content -LiteralPath $xaml -Value $x -NoNewline -Encoding utf8
 
-          Write-Host '应用补丁后的关键行：'
+          Write-Host '--- patched ---'
           Select-String -Path $csproj -Pattern 'AssemblyName' | ForEach-Object { $_.Line.Trim() }
           Select-String -Path $xaml -Pattern 'Title=' | Select-Object -First 1 | ForEach-Object { $_.Line.Trim() }
 
@@ -65,19 +72,21 @@ jobs:
           if (Test-Path "Ink Canvas/Resources/icc.ico") { Write-Host 'icon ok' } else { Write-Host 'icon missing' }
 
       - name: Build (Release x64)
-        run: msbuild "Ink Canvas/InkCanvasForClass.csproj" /p:Configuration=Release /p:Platform=x64 /m /p:RunAnalyzers=false /verbosity:minimal
+        shell: pwsh
+        run: |
+          msbuild "Ink Canvas/InkCanvasForClass.csproj" /p:Configuration=Release /p:Platform=x64 /m /p:RunAnalyzers=false /verbosity:minimal 2>&1 | Tee-Object -FilePath build.log
+          exit $LASTEXITCODE
 
       - name: Package
-        shell: pwsh
+        shell: pwwsh
         run: |
           $dirs = @(
             "Ink Canvas/bin/Release/x64/net10.0-windows10.0.19041.0",
-            "Ink Canvas/bin/Release/x64/net6.0-windows10.0.19041.0",
-            "Ink Canvas/bin/Release/AnyCPU/net10.0-windows10.0.19041.0"
+            "Ink Canvas/bin/Release/AnyCPU/net10.0-windows10.0.19041.0",
+            "Ink Canvas/bin/Release/x64/net6.0-windows10.0.19041.0"
           )
           $out = $dirs | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $out) { throw '找不到构建输出目录' }
-          Write-Host "output = $out"
           Get-ChildItem $out -Filter *.exe | Select-Object Name, Length
           Compress-Archive -Path "$out/*" -DestinationPath "SchoolToolsBoard-STB-win-x64.zip" -Force
           Get-Item "SchoolToolsBoard-STB-win-x64.zip" | Select-Object Name, Length
@@ -88,3 +97,19 @@ jobs:
           name: SchoolToolsBoard-STB-win-x64
           path: SchoolToolsBoard-STB-win-x64.zip
           if-no-files-found: error
+
+      - name: Publish log to run summary
+        if: always()
+        shell: pwsh
+        run: |
+          "<details><summary>build log</summary>" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "```" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if (Test-Path build.log) {
+            $lines = (Get-Content build.log -Tail 200) -join "`n"
+            $lines | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } else {
+            "(no build.log)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+          "```" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "</details>" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
