@@ -67,6 +67,10 @@ jobs:
           Set-Content -LiteralPath $xaml -Value $x -NoNewline -Encoding utf8
           Log 'patch ok'
 
+          Log 'PHASE 3.5 STB feature patches (board-in-board / perf)'
+          & ./stb/apply-stb-patches.ps1 *>&1 | Tee-Object -FilePath stbpatch.log | Out-Null
+          Log 'STB patches applied'
+
           Log 'PHASE 4 icon'
           try { choco install imagemagick -y --no-progress *>&1 | Out-Null } catch { Log "choco fail: $_" }
           if (Get-Command magick -ErrorAction SilentlyContinue) {
@@ -134,7 +138,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          foreach ($f in @('steps.log','release.log','addin.log','build.log')) {
+          foreach ($f in @('steps.log','release.log','addin.log','build.log','stbpatch.log')) {
             if (Test-Path $f) {
               try { $u = (Invoke-WebRequest -Method Post -InFile $f -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::notice::$f -> $u" } catch {}
             }
