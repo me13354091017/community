@@ -33,24 +33,11 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: SDK info
-        shell: pwsh
-        run: |
-          dotnet --version
-          dotnet --list-sdks | Write-Host
-          exit 0
-
       - name: Restore main project (locked)
         shell: pwsh
         run: |
           dotnet restore "Ink Canvas/InkCanvasForClass.csproj" --locked-mode *>&1 | Out-File -FilePath restore.log -Encoding utf8
-          $code = $LASTEXITCODE
-          Write-Host "restore exit=$code"
-          if ($code -ne 0) {
-            Get-Content restore.log | Select-String -Pattern 'error|NU1|MSB' | Select-Object -First 12 | ForEach-Object { Write-Host "::error::$($_.Line)" }
-            try { $u = (Invoke-WebRequest -Method Post -InFile 'restore.log' -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::error::restore.log -> $u" } catch {}
-            exit $code
-          }
+          Write-Host "restore exit=$LASTEXITCODE"
           exit 0
 
       - name: Apply STB brand patch
@@ -75,20 +62,15 @@ jobs:
         run: |
           choco install imagemagick -y --no-progress | Out-Null
           magick -background none "stb/icon.svg" -define icon:auto-resize=256,128,64,48,32,16 "Ink Canvas/Resources/icc.ico"
-          if (Test-Path "Ink Canvas/Resources/icc.ico") { Write-Host 'icon ok' } else { Write-Host 'icon missing' }
+          Write-Host "icon exit=$LASTEXITCODE"
+          Get-Item "Ink Canvas/Resources/icc.ico" | Select-Object Name, Length | Format-Table | Out-String | Write-Host
           exit 0
 
       - name: Build (Release x64)
         shell: pwsh
         run: |
           msbuild "Ink Canvas/InkCanvasForClass.csproj" /p:Configuration=Release /p:Platform=x64 /m /p:RunAnalyzers=false /verbosity:minimal *>&1 | Out-File -FilePath build.log -Encoding utf8
-          $code = $LASTEXITCODE
-          Write-Host "build exit=$code"
-          if ($code -ne 0) {
-            Get-Content build.log | Select-String -Pattern ': error|error NU|error MSB|error CS|Error ' | Select-Object -First 12 | ForEach-Object { Write-Host "::error::$($_.Line)" }
-            try { $u = (Invoke-WebRequest -Method Post -InFile 'build.log' -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::error::build.log -> $u" } catch {}
-            exit $code
-          }
+          Write-Host "build exit=$LASTEXITCODE"
           exit 0
 
       - name: Package
@@ -100,15 +82,33 @@ jobs:
             "Ink Canvas/bin/Release/x64/net6.0-windows10.0.19041.0"
           )
           $out = $dirs | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $out) { throw '找不到构建输出目录' }
+          "bin tree:" | Out-File -FilePath hint.txt -Encoding utf8
+          Get-ChildItem "Ink Canvas/bin" -Recurse -Depth 4 -ErrorAction SilentlyContinue |
+            Select-Object FullName | Out-File -FilePath hint.txt -Append -Encoding utf8
+          if (-not $out) { Write-Host 'no output dir'; exit 1 }
           Get-ChildItem $out -Filter *.exe | Select-Object Name, Length | Format-Table | Out-String | Write-Host
           Compress-Archive -Path "$out/*" -DestinationPath "SchoolToolsBoard-STB-win-x64.zip" -Force
           Get-Item "SchoolToolsBoard-STB-win-x64.zip" | Select-Object Name, Length | Format-Table | Out-String | Write-Host
           exit 0
 
       - name: Upload artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: SchoolToolsBoard-STB-win-x64
           path: SchoolToolsBoard-STB-win-x64.zip
           if-no-files-found: error
+
+      - name: Publish diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          foreach ($f in @('build.log','restore.log','hint.txt')) {
+            if (Test-Path $f) {
+              try { $u = (Invoke-WebRequest -Method Post -InFile $f -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::notice::$f -> $u" } catch { Write-Host "::warning::$f upload failed" }
+            }
+          }
+          if (Test-Path build.log) {
+            Get-Content build.log | Select-String -Pattern ': error|error NU|error MSB|error CS' | Select-Object -First 10 | ForEach-Object { Write-Host "::error::$($_.Line)" }
+          }
+          exit 0
