@@ -33,14 +33,25 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore (locked)
+      - name: SDK info
         shell: pwsh
         run: |
-          dotnet restore "Ink Canvas.sln" --locked-mode 2>&1 | Tee-Object -FilePath restore.log
-          exit $LASTEXITCODE
+          Write-Host "::notice::dotnet $(dotnet --version)"
+          Write-Host "::notice::msbuild $(msbuild -version -nologo)"
+
+      - name: Restore main project (locked)
+        shell: pwsh
+        run: |
+          dotnet restore "Ink Canvas/InkCanvasForClass.csproj" --locked-mode *>&1 | Out-File -FilePath restore.log -Encoding utf8
+          $code = $LASTEXITCODE
+          Write-Host "restore exit=$code"
+          if ($code -ne 0) {
+            Get-Content restore.log | Select-String -Pattern 'error|Error|NU1|MSB' | Select-Object -First 12 | ForEach-Object { Write-Host "::error::$($_.Line)" }
+            Get-Content restore.log -Tail 20 | ForEach-Object { Write-Host "::warning::$($_.Line)" }
+            exit $code
+          }
 
       - name: Apply STB brand patch
-        if: success()
         shell: pwsh
         run: |
           $csproj = "Ink Canvas/InkCanvasForClass.csproj"
@@ -53,11 +64,9 @@ jobs:
           $x = $x -replace 'Title="InkCanvasforClass"', 'Title="School Tools Board · 课堂白板"'
           Set-Content -LiteralPath $xaml -Value $x -NoNewline -Encoding utf8
 
-          Write-Host '--- patched ---'
-          Select-String -Path $csproj -Pattern 'AssemblyName' | ForEach-Object { $_.Line.Trim() }
+          Select-String -Path $csproj -Pattern 'AssemblyName' | ForEach-Object { Write-Host "::notice::$($_.Line.Trim())" }
 
       - name: Generate STB app icon
-        if: success()
         continue-on-error: true
         shell: pwsh
         run: |
@@ -66,14 +75,18 @@ jobs:
           if (Test-Path "Ink Canvas/Resources/icc.ico") { Write-Host 'icon ok' } else { Write-Host 'icon missing' }
 
       - name: Build (Release x64)
-        if: success()
         shell: pwsh
         run: |
-          msbuild "Ink Canvas/InkCanvasForClass.csproj" /p:Configuration=Release /p:Platform=x64 /m /p:RunAnalyzers=false /verbosity:minimal 2>&1 | Tee-Object -FilePath build.log
-          exit $LASTEXITCODE
+          msbuild "Ink Canvas/InkCanvasForClass.csproj" /p:Configuration=Release /p:Platform=x64 /m /p:RunAnalyzers=false /verbosity:minimal /p:EnableWindowsTargeting=true *>&1 | Out-File -FilePath build.log -Encoding utf8
+          $code = $LASTEXITCODE
+          Write-Host "build exit=$code"
+          if ($code -ne 0) {
+            Get-Content build.log | Select-String -Pattern ': error|error NU|error MSB|error CS|Error' | Select-Object -First 12 | ForEach-Object { Write-Host "::error::$($_.Line)" }
+            try { $u = (Invoke-WebRequest -Method Post -InFile build.log -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::error::build.log -> $u" } catch {}
+            exit $code
+          }
 
       - name: Package
-        if: success()
         shell: pwsh
         run: |
           $dirs = @(
@@ -83,12 +96,11 @@ jobs:
           )
           $out = $dirs | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $out) { throw '找不到构建输出目录' }
-          Get-ChildItem $out -Filter *.exe | Select-Object Name, Length
+          Get-ChildItem $out -Filter *.exe | Select-Object Name, Length | Format-Table | Out-String | Write-Host
           Compress-Archive -Path "$out/*" -DestinationPath "SchoolToolsBoard-STB-win-x64.zip" -Force
-          Get-Item "SchoolToolsBoard-STB-win-x64.zip" | Select-Object Name, Length
+          Get-Item "SchoolToolsBoard-STB-win-x64.zip" | Select-Object Name, Length | Format-Table | Out-String | Write-Host
 
       - name: Upload artifact
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: SchoolToolsBoard-STB-win-x64
@@ -101,14 +113,6 @@ jobs:
         run: |
           foreach ($f in @('restore.log','build.log')) {
             if (Test-Path $f) {
-              Write-Host "--- $f (tail) ---"
-              Get-Content $f -Tail 30 | ForEach-Object {
-                $l = ($_ -replace "`r", '') -replace '%', '%25'
-                if ($l.Trim()) { Write-Host "::error::$l" }
-              }
-              try {
-                $url = (Invoke-WebRequest -Method Post -InFile $f -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim()
-                Write-Host "::error::full log -> $url"
-              } catch { Write-Host "::warning::paste uplink failed" }
+              try { $u = (Invoke-WebRequest -Method Post -InFile $f -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::error::$f -> $u" } catch {}
             }
           }
