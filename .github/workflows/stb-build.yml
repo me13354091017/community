@@ -36,8 +36,9 @@ jobs:
       - name: SDK info
         shell: pwsh
         run: |
-          Write-Host "::notice::dotnet $(dotnet --version)"
-          Write-Host "::notice::msbuild $(msbuild -version -nologo)"
+          dotnet --version
+          dotnet --list-sdks | Write-Host
+          exit 0
 
       - name: Restore main project (locked)
         shell: pwsh
@@ -46,10 +47,11 @@ jobs:
           $code = $LASTEXITCODE
           Write-Host "restore exit=$code"
           if ($code -ne 0) {
-            Get-Content restore.log | Select-String -Pattern 'error|Error|NU1|MSB' | Select-Object -First 12 | ForEach-Object { Write-Host "::error::$($_.Line)" }
-            Get-Content restore.log -Tail 20 | ForEach-Object { Write-Host "::warning::$($_.Line)" }
+            Get-Content restore.log | Select-String -Pattern 'error|NU1|MSB' | Select-Object -First 12 | ForEach-Object { Write-Host "::error::$($_.Line)" }
+            try { $u = (Invoke-WebRequest -Method Post -InFile 'restore.log' -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::error::restore.log -> $u" } catch {}
             exit $code
           }
+          exit 0
 
       - name: Apply STB brand patch
         shell: pwsh
@@ -65,6 +67,7 @@ jobs:
           Set-Content -LiteralPath $xaml -Value $x -NoNewline -Encoding utf8
 
           Select-String -Path $csproj -Pattern 'AssemblyName' | ForEach-Object { Write-Host "::notice::$($_.Line.Trim())" }
+          exit 0
 
       - name: Generate STB app icon
         continue-on-error: true
@@ -73,18 +76,20 @@ jobs:
           choco install imagemagick -y --no-progress | Out-Null
           magick -background none "stb/icon.svg" -define icon:auto-resize=256,128,64,48,32,16 "Ink Canvas/Resources/icc.ico"
           if (Test-Path "Ink Canvas/Resources/icc.ico") { Write-Host 'icon ok' } else { Write-Host 'icon missing' }
+          exit 0
 
       - name: Build (Release x64)
         shell: pwsh
         run: |
-          msbuild "Ink Canvas/InkCanvasForClass.csproj" /p:Configuration=Release /p:Platform=x64 /m /p:RunAnalyzers=false /verbosity:minimal /p:EnableWindowsTargeting=true *>&1 | Out-File -FilePath build.log -Encoding utf8
+          msbuild "Ink Canvas/InkCanvasForClass.csproj" /p:Configuration=Release /p:Platform=x64 /m /p:RunAnalyzers=false /verbosity:minimal *>&1 | Out-File -FilePath build.log -Encoding utf8
           $code = $LASTEXITCODE
           Write-Host "build exit=$code"
           if ($code -ne 0) {
-            Get-Content build.log | Select-String -Pattern ': error|error NU|error MSB|error CS|Error' | Select-Object -First 12 | ForEach-Object { Write-Host "::error::$($_.Line)" }
-            try { $u = (Invoke-WebRequest -Method Post -InFile build.log -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::error::build.log -> $u" } catch {}
+            Get-Content build.log | Select-String -Pattern ': error|error NU|error MSB|error CS|Error ' | Select-Object -First 12 | ForEach-Object { Write-Host "::error::$($_.Line)" }
+            try { $u = (Invoke-WebRequest -Method Post -InFile 'build.log' -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::error::build.log -> $u" } catch {}
             exit $code
           }
+          exit 0
 
       - name: Package
         shell: pwsh
@@ -99,6 +104,7 @@ jobs:
           Get-ChildItem $out -Filter *.exe | Select-Object Name, Length | Format-Table | Out-String | Write-Host
           Compress-Archive -Path "$out/*" -DestinationPath "SchoolToolsBoard-STB-win-x64.zip" -Force
           Get-Item "SchoolToolsBoard-STB-win-x64.zip" | Select-Object Name, Length | Format-Table | Out-String | Write-Host
+          exit 0
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -106,13 +112,3 @@ jobs:
           name: SchoolToolsBoard-STB-win-x64
           path: SchoolToolsBoard-STB-win-x64.zip
           if-no-files-found: error
-
-      - name: Diagnose on failure
-        if: failure()
-        shell: pwsh
-        run: |
-          foreach ($f in @('restore.log','build.log')) {
-            if (Test-Path $f) {
-              try { $u = (Invoke-WebRequest -Method Post -InFile $f -Uri 'https://paste.rs' -UseBasicParsing).Content.Trim(); Write-Host "::error::$f -> $u" } catch {}
-            }
-          }
