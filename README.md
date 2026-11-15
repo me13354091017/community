@@ -6,39 +6,42 @@
 
 在线版（Web，零依赖）：<https://me13354091017.github.io/SCHOOL_TOOLS_BOARD/>
 
+## 下载
+
+| 版本 | 下载 | 说明 |
+|---|---|---|
+| 桌面版（本仓库） | **[SchoolToolsBoard-STB-win-x64.zip](https://github.com/me13354091017/community/releases/download/stb-latest/SchoolToolsBoard-STB-win-x64.zip)** | Windows 10 1809+ / 11 x64，解压后运行 `SchoolToolsBoard.exe` |
+
+安装包由 CI 每次推送到 `net10` 分支时自动重新构建并覆盖到 [Releases → stb-latest](https://github.com/me13354091017/community/releases/tag/stb-latest)。
+
 ## 为什么以 ICC-CE 为底座
 
-ICC-CE 是面向教室一体机的成熟墨迹白板，很多关键能力是“用久才发现必须有”的，自研很难在短期内达到同等手感：
+ICC-CE 是面向教室一体机的成熟墨迹白板，很多关键能力是 "用久才发现必须有" 的，自研很难在短期内达到同等手感：
 
 | 能力 | 说明 |
 |---|---|
-| **PPT 演示批注** | 在 PowerPoint 放映中用笔写、按幻灯片逐页保存墨迹，翻页后墨迹跟着走，合上再开还在 |
+| **PPT 演示批注** | 在 PowerPoint 放映中用笔写，按幻灯片逐页保存墨迹，翻页后墨迹跟着走，合上再开还在 |
 | **多页白板 + 时间机器** | 一节课上百页滑页翻动、无限步撤销/重做、页缩略图与页面管理 |
 | **手势与笔压** | 双指缩放/旋转/平移，笔压直接参与笔宽，手掌防误触 |
 | **形状与教学工具** | 直线/矩形/椭圆/箭头/抛物线等形状、坐标系与函数图像、计时器、聚光灯等 |
 
-## 获取
-
-- 构建产物：仓库 **Actions → STB Desktop Build → 最新运行 → Artifacts → `SchoolToolsBoard-STB-win-x64`**
-- 发布版：仓库 **Releases**（由 CI 在打标签时自动创建）
-- 运行环境：Windows 10 1809 / Windows 11，x64 一体机；PPT 批注需要本机安装 PowerPoint
-
 ## 本地构建
 
-需要 .NET SDK 10 与 Visual Studio 生成工具（含 MSBuild）：
+需要 .NET SDK 10：
 
 ```powershell
-dotnet restore "Ink Canvas/InkCanvasForClass.csproj"
-msbuild "Ink Canvas/InkCanvasForClass.csproj" /p:Configuration=Release /p:Platform=x64 /m
+dotnet restore "Ink Canvas/InkCanvasForClass.csproj" --locked-mode
+"Ink Canvas\resources\icc.ico"  # 可选：换成自己的图标
+dotnet build "Ink Canvas/InkCanvasForClass.csproj" -c Release -p:Platform=x64
 ```
 
-产物在 `Ink Canvas/bin/Release/x64/net10.0-windows10.0.19041.0/`，主程序 `SchoolToolsBoard.exe`。
+产物在 `Ink Canvas/bin/Release/x64/net10.0-windows10.0.19041.0/`。
 
 ## 本仓库相对上游的改动
 
-改名与图标不直接写入源码，而是在 CI 里构建前打补丁（见 `.github/workflows/stb-build.yml`），好处是**永不与上游冲突**，以后 `git pull` 跟着 ICC-CE 升级不会破：
+改名与图标不直接写入源码，而是在 CI 里构建前打补丁（见 `.github/workflows/stb-build.yml`），好处是 **永不与上游冲突**，以后 `git pull` 跟着 ICC-CE 升级不会破：
 
-- `AssemblyName`：`InkCanvasForClass` → `SchoolToolsBoard`（主程序 `SchoolToolsBoard.exe`）
+- `AssemblyName` ：`InkCanvasForClass` → `SchoolToolsBoard`（主程序 `SchoolToolsBoard.exe`）
 - 窗口标题：`InkCanvasforClass` → `School Tools Board · 课堂白板`
 - 应用图标：由 `stb/icon.svg`（STB）现场生成，覆盖 `Resources/icc.ico`
 
