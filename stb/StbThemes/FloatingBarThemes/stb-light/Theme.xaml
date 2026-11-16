@@ -1,0 +1,14 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- STB · 象牙白（浅色，默认） -->
+    <SolidColorBrush x:Key="FloatingBarBackgroundBrush" Color="#F6FBFAF7" />
+    <SolidColorBrush x:Key="FloatingBarForegroundBrush" Color="#FF171A1F" />
+    <SolidColorBrush x:Key="FloatingBarBorderBrush" Color="#26000000" />
+    <SolidColorBrush x:Key="FloatingBarAccentBrush" Color="#FFE9A23B" />
+    <SolidColorBrush x:Key="FloatingBarButtonHoverBrush" Color="#26E9A23B" />
+    <SolidColorBrush x:Key="FloatingBarButtonPressedBrush" Color="#44E9A23B" />
+    <SolidColorBrush x:Key="FloatingBarPopupBackgroundBrush" Color="#FFFBFAF6" />
+    <SolidColorBrush x:Key="FloatingBarPopupInnerBackgroundBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="FloatingBarPopupInnerBorderBrush" Color="#FFE6E2D8" />
+    <SolidColorBrush x:Key="FloatingBarPopupTitleForegroundBrush" Color="#FFB0761D" />
+    <SolidColorBrush x:Key="FloatingBarPopupCloseBrush" Color="#FFC0392B" />
+</ResourceDictionary>

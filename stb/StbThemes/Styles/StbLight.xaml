@@ -1,0 +1,65 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- STB 品牌浅色覆盖：象牙白底 + 暖琥珀点缀 + 石墨文字。
+         本字典在 Light.xaml 之后合并，同名键优先命中这里，未列出的键仍回落到上游 Light.xaml。 -->
+
+    <!-- 浮动栏 -->
+    <SolidColorBrush x:Key="FloatBarBackground" Color="#F6FBFAF7" />
+    <SolidColorBrush x:Key="FloatBarBackgroundWithoutOpacity" Color="#FFFBFAF7" />
+    <SolidColorBrush x:Key="FloatBarTitleBackground" Color="#26E9A23B" />
+    <SolidColorBrush x:Key="FloatBarBorderBrush" Color="#14000000" />
+    <SolidColorBrush x:Key="FloatBarForeground" Color="#FF171A1F" />
+    <Color x:Key="FloatBarForegroundColor">#FF171A1F</Color>
+
+    <!-- 浮动栏按钮三态 -->
+    <SolidColorBrush x:Key="FloatBarButtonBackgroundKey" Color="Transparent" />
+    <SolidColorBrush x:Key="FloatBarButtonBackgroundPointerOverKey" Color="#26E9A23B" />
+    <SolidColorBrush x:Key="FloatBarButtonButtonBackgroundPressedKey" Color="#44E9A23B" />
+
+    <!-- 白板模式浮动栏 -->
+    <SolidColorBrush x:Key="BoardFloatBarBackground" Color="#FFF7F6F1" />
+    <SolidColorBrush x:Key="BoardFloatBarBorderBrush" Color="#FFDCD8CC" />
+    <SolidColorBrush x:Key="BoardFloatBarSelectedBackground" Color="#FFE9A23B" />
+    <SolidColorBrush x:Key="BoardFloatBarSelectedBorderBrush" Color="#FFE9A23B" />
+    <SolidColorBrush x:Key="BoardFloatBarSelectedForeground" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="BoardFloatBarButtonBackgroundKey" Color="Transparent" />
+    <SolidColorBrush x:Key="BoardFloatBarButtonBackgroundPointerOverKey" Color="#26E9A23B" />
+    <SolidColorBrush x:Key="BoardFloatBarButtonButtonBackgroundPressedKey" Color="#44E9A23B" />
+
+    <!-- 更多功能弹窗 -->
+    <SolidColorBrush x:Key="ToolsPopupBackground" Color="#FFFBFAF6" />
+    <SolidColorBrush x:Key="ToolsPopupInnerBackground" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="ToolsPopupInnerBorderBrush" Color="#FFE6E2D8" />
+    <SolidColorBrush x:Key="ToolsPopupTitleForeground" Color="#FFB0761D" />
+
+    <!-- 设置页 -->
+    <SolidColorBrush x:Key="SettingsPageForeground" Color="#FF171A1F" />
+    <SolidColorBrush x:Key="SettingsPageAnnotationForeground" Color="#FF6C7178" />
+    <SolidColorBrush x:Key="SettingsPageBorderBrush" Color="#14000000" />
+    <SolidColorBrush x:Key="SettingsPageBackground" Color="#FBFFFFFF" />
+
+    <!-- 文字与图标 -->
+    <SolidColorBrush x:Key="IconForeground" Color="#FF171A1F" />
+    <SolidColorBrush x:Key="TextForeground" Color="#FF171A1F" />
+
+    <!-- 快抽 -->
+    <SolidColorBrush x:Key="QuickDrawFloatingButtonBackground" Color="#E6FBFAF7" />
+    <SolidColorBrush x:Key="QuickDrawFloatingButtonBorderBrush" Color="#26000000" />
+    <SolidColorBrush x:Key="QuickDrawFloatingButtonIconForeground" Color="#FF171A1F" />
+    <SolidColorBrush x:Key="QuickDrawWindowBackground" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="QuickDrawWindowBorderBrush" Color="#FFE6E2D8" />
+    <SolidColorBrush x:Key="QuickDrawWindowTitleForeground" Color="#FF2B2F36" />
+    <SolidColorBrush x:Key="QuickDrawWindowDigitForeground" Color="#FF2B2F36" />
+
+    <!-- 历史回滚 -->
+    <SolidColorBrush x:Key="HistoryWindowPrimaryBrush" Color="#FFE9A23B" />
+    <SolidColorBrush x:Key="HistoryWindowPrimaryHoverBrush" Color="#FFF0B45A" />
+    <SolidColorBrush x:Key="HistoryWindowPrimaryPressedBrush" Color="#FFC98627" />
+    <SolidColorBrush x:Key="HistoryWindowCardBackgroundBrush" Color="#FFFAF9F5" />
+    <SolidColorBrush x:Key="HistoryWindowCardBorderBrush" Color="#FFE6E2D8" />
+    <SolidColorBrush x:Key="HistoryWindowTextPrimaryBrush" Color="#FF1F232A" />
+    <SolidColorBrush x:Key="HistoryWindowTextSecondaryBrush" Color="#FF6C7178" />
+
+    <!-- 通用色 -->
+    <SolidColorBrush x:Key="RedBrush" Color="#FFC0392B" />
+    <SolidColorBrush x:Key="PurpleBrush" Color="#FF5B3E96" />
+</ResourceDictionary>

@@ -1,0 +1,14 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- STB · 石墨黑板（深色） -->
+    <SolidColorBrush x:Key="FloatingBarBackgroundBrush" Color="#F212171E" />
+    <SolidColorBrush x:Key="FloatingBarForegroundBrush" Color="#FFF3F5F7" />
+    <SolidColorBrush x:Key="FloatingBarBorderBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="FloatingBarAccentBrush" Color="#FFE9A23B" />
+    <SolidColorBrush x:Key="FloatingBarButtonHoverBrush" Color="#33E9A23B" />
+    <SolidColorBrush x:Key="FloatingBarButtonPressedBrush" Color="#55E9A23B" />
+    <SolidColorBrush x:Key="FloatingBarPopupBackgroundBrush" Color="#FF161C24" />
+    <SolidColorBrush x:Key="FloatingBarPopupInnerBackgroundBrush" Color="#FF1F262F" />
+    <SolidColorBrush x:Key="FloatingBarPopupInnerBorderBrush" Color="#FF333C47" />
+    <SolidColorBrush x:Key="FloatingBarPopupTitleForegroundBrush" Color="#FFF2C078" />
+    <SolidColorBrush x:Key="FloatingBarPopupCloseBrush" Color="#FFF26B5E" />
+</ResourceDictionary>
