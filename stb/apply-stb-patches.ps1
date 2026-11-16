@@ -1,6 +1,7 @@
 # STB 品牌与功能补丁（构建前执行）
 # 1) 板中板：把 ICC-CE 的「小白板」按希沃板中板的形态改造（命名 / 白底黑笔 / 主板上居中 / 关闭贴回）
 # 2) 性能：把几项偏“高质量低性能”的默认值调到“平衡”，弱 GPU 一体机上更稳
+# 3) UI 调色板：注入 STB 品牌明/暗调色覆盖，重画浮动栏、弹窗、设置页、历史回滚与黑板底
 $ErrorActionPreference = 'Stop'
 
 function Patch-File {
@@ -156,5 +157,48 @@ Patch-File 'Ink Canvas/Resources/Settings.cs' `
     '        public bool ShowPPTEnhancedPreviewLoadingAnimation { get; set; } = true;' `
     '        public bool ShowPPTEnhancedPreviewLoadingAnimation { get; set; } = false;' `
     'ppt preview loading animation off'
+
+Write-Host 'PHASE F: STB 品牌调色覆盖注入（明/暗两套）'
+Patch-File 'Ink Canvas/MainWindow_cs/MW_AutoTheme.cs' `
+    '            Application.Current.Resources.MergedDictionaries.Add(rd1);' `
+    '            Application.Current.Resources.MergedDictionaries.Add(rd1);
+
+            // STB: 在明/暗主题字典之后追加品牌调色覆盖，同名键优先命中 STB 值
+            try
+            {
+                var stbThemeUri = new Uri(isLightTheme ? "Resources/Styles/StbLight.xaml" : "Resources/Styles/StbDark.xaml", UriKind.Relative);
+                Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = stbThemeUri });
+            }
+            catch (Exception stbThemeEx)
+            {
+                LogHelper.WriteLogToFile("[STB] 品牌调色覆盖加载失败: " + stbThemeEx.Message, LogHelper.LogType.Warning);
+            }' `
+    'stb palette hook'
+
+Write-Host 'PHASE G: 默认浮动栏主题与黑板/白板底色'
+Patch-File 'Ink Canvas/Resources/Settings.cs' `
+    '        public string FloatingBarThemeId { get; set; } = "default";' `
+    '        public string FloatingBarThemeId { get; set; } = "stb-light";' `
+    'default floating bar theme -> stb-light'
+Patch-File 'Ink Canvas/Resources/Settings.cs' `
+    '        public string CustomBackgroundColor { get; set; } = "#162924";' `
+    '        public string CustomBackgroundColor { get; set; } = "#101A16";' `
+    'default board background -> #101A16'
+Patch-File 'Ink Canvas/MainWindow_cs/MW_Colors.cs' `
+    'Color.FromRgb(22, 41, 36)' `
+    'Color.FromRgb(16, 26, 22)' `
+    'board dark base color'
+Patch-File 'Ink Canvas/MainWindow_cs/MW_Colors.cs' `
+    'Color.FromRgb(234, 235, 237)' `
+    'Color.FromRgb(247, 248, 246)' `
+    'board light base color'
+Patch-File 'Ink Canvas/MainWindow_cs/MW_BoardIcons.cs' `
+    'Color.FromRgb(22, 41, 36)' `
+    'Color.FromRgb(16, 26, 22)' `
+    'board icons dark base color'
+Patch-File 'Ink Canvas/MainWindow_cs/MW_BoardIcons.cs' `
+    'Color.FromRgb(234, 235, 237)' `
+    'Color.FromRgb(247, 248, 246)' `
+    'board icons light base color'
 
 Write-Host 'STB PATCHES DONE'

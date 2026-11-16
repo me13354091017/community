@@ -1,7 +1,7 @@
 name: STB Desktop Build
 
 # School Tools Board（STB）桌面版构建：
-# 以 ICC-CE 源码为基础，构建前用脚本打品牌补丁（程序名 / 窗口标题 / 图标）。
+# 以 ICC-CE 源码为基础，构建前用脚本打品牌补丁（程序名 / 窗口标题 / 图标 / 板中板 / STB 调色板）。
 # PPT 批注需要 ppt-agent（VSTO 插件），所以同时构建 InkCanvas.PowerPointAddIn。
 
 on:
@@ -67,9 +67,15 @@ jobs:
           Set-Content -LiteralPath $xaml -Value $x -NoNewline -Encoding utf8
           Log 'patch ok'
 
-          Log 'PHASE 3.5 STB feature patches (board-in-board / perf)'
+          Log 'PHASE 3.5 STB feature patches (board-in-board / perf / palette)'
           & ./stb/apply-stb-patches.ps1 *>&1 | Tee-Object -FilePath stbpatch.log | Out-Null
           Log 'STB patches applied'
+
+          Log 'PHASE 3.6 STB UI palette files'
+          $stylesDir = 'Ink Canvas/Resources/Styles'
+          if (-not (Test-Path $stylesDir)) { New-Item -ItemType Directory -Force $stylesDir | Out-Null }
+          Copy-Item 'stb/StbThemes/Styles/*.xaml' $stylesDir -Force
+          Log ("styles=" + ((Get-ChildItem $stylesDir -Filter 'Stb*.xaml' -File).Count))
 
           Log 'PHASE 4 icon'
           try { choco install imagemagick -y --no-progress *>&1 | Out-Null } catch { Log "choco fail: $_" }
@@ -112,11 +118,15 @@ jobs:
           if (-not (Test-Path $out)) { Log 'NO OUTPUT DIR'; exit 1 }
           $agent = Join-Path $out 'ppt-agent'
           Log "ppt-agent files=$((Get-ChildItem $agent -File -ErrorAction SilentlyContinue).Count)"
+          $themes = Join-Path $out 'FloatingBarThemes'
+          New-Item -ItemType Directory -Force $themes | Out-Null
+          Copy-Item 'stb/StbThemes/FloatingBarThemes/*' $themes -Recurse -Force
+          Log "floating bar themes=$((Get-ChildItem $themes -Directory -ErrorAction SilentlyContinue).Count)"
           Compress-Archive -Path "$out/*" -DestinationPath "SchoolToolsBoard-STB-win-x64.zip" -Force
           Log "zip=$((Get-Item 'SchoolToolsBoard-STB-win-x64.zip').Length) bytes"
 
           Log 'PHASE 9 publish release'
-          $body = "School Tools Board · 课堂白板（STB）桌面版`n`n基于 InkCanvasForClass Community Edition（ICC-CE, GPL-3.0）源码构建，保留 PPT 放映批注、多页白板 + 时间机器、手势与笔压、形状与学科工具。`n`n- 主程序：SchoolToolsBoard.exe（解压后双击）`n- PPT 批注插件：ppt-agent/`n- 运行环境：Windows 10 1809+ / Windows 11 x64，需 .NET 10 Desktop Runtime`n- 上游：https://github.com/InkCanvasForClass/community`n- 构建提交：$env:SHA"
+          $body = "School Tools Board · 课堂白板（STB）桌面版`n`n基于 InkCanvasForClass Community Edition（ICC-CE, GPL-3.0）源码构建，保留 PPT 放映批注、多页白板 + 时间机器、手势与笔压、形状与学科工具，并额外提供与希沃同形态的板中板。`n`n- 主程序：SchoolToolsBoard.exe（解压后双击）`n- PPT 批注插件：ppt-agent/`n- 浮动栏主题：FloatingBarThemes/（stb-light / stb-dark）`n- 运行环境：Windows 10 1809+ / Windows 11 x64，需 .NET 10 Desktop Runtime`n- 上游：https://github.com/InkCanvasForClass/community`n- 构建提交：$env:SHA"
           gh release view stb-latest *>&1 | Out-File -FilePath release.log -Encoding utf8
           $exists = (Test-Path release.log) -and -not ((Get-Content release.log -Raw) -match 'release not found')
           if (-not $exists) {
